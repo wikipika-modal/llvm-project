@@ -118,7 +118,7 @@ def _executeWithFakeConfig(test, commands):
         order="smart",
         params={},
     )
-    return libcxx.test.format._executeScriptInternal(test, litConfig, commands)
+    return libcxx.test.format._executeScriptInternal(test, litConfig, commands, isProbe=True)
 
 
 def _makeConfigTest(config):
