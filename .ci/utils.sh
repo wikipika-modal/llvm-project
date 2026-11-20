@@ -53,7 +53,7 @@ function at-exit {
       python "${MONOREPO_ROOT}"/.ci/premerge_advisor_upload.py \
         $(git rev-parse HEAD~1) $GITHUB_RUN_NUMBER \
         "${BUILD_DIR}"/test-results.*.xml "${MONOREPO_ROOT}"/ninja*.log
-    else
+    elif [[ -n "$BUILDBOT_BUILDNUMBER" ]]; then
       python "${MONOREPO_ROOT}"/.ci/premerge_advisor_upload.py \
         $(git rev-parse HEAD) $BUILDBOT_BUILDNUMBER \
         "${BUILD_DIR}"/test-results.*.xml "${MONOREPO_ROOT}"/ninja*.log
