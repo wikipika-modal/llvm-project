@@ -75,6 +75,13 @@ $ libcxx/utils/libcxx-lit <build> -sv libcxx/test/std/containers # Run the tests
 $ libcxx/utils/libcxx-lit <build> -sv libcxx/test/std/containers --param std=c++03 # Run the tests in C++03
 ```
 
+With `--param enable_modules=clang --param partition_module_cache=true`,
+ordinary tests with matching compiler commands reuse Clang modules. Feature
+probes share a separate cache. Tests with custom commands, local configuration,
+file dependencies, or flags beyond simple macro definitions and undefinitions
+get private caches. Common command variants import `<vector>` while lit prepares
+Google Benchmark. By default the suite uses a single module cache.
+
 Other parameters are supported by the test suite. Those are defined in `libcxx/utils/libcxx/test/params.py`.
 If you want to customize how to run the libc++ test suite beyond what is available
 in `params.py`, you most likely want to use a custom site configuration instead.

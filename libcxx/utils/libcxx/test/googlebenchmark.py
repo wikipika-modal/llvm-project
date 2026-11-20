@@ -22,6 +22,11 @@ import hashlib
 import os
 import shlex
 import subprocess
+import tempfile
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+
+import lit.Test
 
 import lit.TestRunner
 
@@ -162,7 +167,35 @@ def _run(litConfig, what, command, cwd):
         )
 
 
+def _warmModuleCache(config, litConfig, suffix):
+    # Use the test format so warm-up sees exactly the same flags as real tests.
+    with tempfile.TemporaryDirectory(dir=config.test_exec_root) as root:
+        source = Path(root, "warm." + suffix)
+        source.write_text(
+            "// expected-no-diagnostics\n#include <vector>\nint main() {}\n"
+        )
+        suite = lit.Test.TestSuite("warmup", root, root, config)
+        test = lit.Test.Test(suite, (source.name,), config)
+        result = config.test_format.execute(test, litConfig)
+        if result.code not in (lit.Test.PASS, lit.Test.UNSUPPORTED):
+            litConfig.fatal("Module cache warm-up failed: " + result.output)
+
+
 def prepare(config, litConfig):
+    if {"partition-module-cache", "clang-modules-build"} <= config.available_features:
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            jobs = [
+                pool.submit(_warmModuleCache, config, litConfig, suffix)
+                for suffix in ("compile.pass.cpp", "link.pass.cpp", "verify.cpp")
+            ]
+            flags = _prepare(config, litConfig)
+            for job in jobs:
+                job.result()
+            return flags
+    return _prepare(config, litConfig)
+
+
+def _prepare(config, litConfig):
     """
     Make GoogleBenchmark available to the test suite and return the flags required to
     build the benchmarks against it.

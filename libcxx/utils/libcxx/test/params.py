@@ -206,6 +206,13 @@ DEFAULT_PARAMETERS = [
         ]),
     ),
     Parameter(
+        name="partition_module_cache",
+        type=bool,
+        default=False,
+        help="Group Clang module caches by compiler command when running tests in parallel.",
+        actions=lambda enabled: [AddFeature("partition-module-cache")] if enabled else [],
+    ),
+    Parameter(
         name="enable_modules",
         choices=["none", "clang", "clang-lsv"],
         type=str,

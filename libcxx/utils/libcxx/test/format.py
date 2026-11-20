@@ -6,6 +6,9 @@
 #
 # ===----------------------------------------------------------------------===##
 
+import hashlib
+import shlex
+
 import lit
 import libcxx.test.config as config
 import lit.formats
@@ -34,14 +37,14 @@ def _checkBaseSubstitutions(substitutions):
     for s in ["%{cxx}", "%{compile_flags}", "%{link_flags}", "%{flags}", "%{exec}"]:
         assert s in substitutions, "Required substitution {} was not provided".format(s)
 
-def _executeScriptInternal(test, litConfig, commands):
+def _executeScriptInternal(test, litConfig, commands, *, isProbe=False):
     """
     Returns (stdout, stderr, exitCode, timeoutInfo, parsedCommands, testUpdateOutput), or an appropriate lit.Test.Result
     in case of an error while parsing the script.
 
     TODO: This really should be easier to access from Lit itself
     """
-    parsedCommands = parseScript(test, preamble=commands)
+    parsedCommands = parseScript(test, preamble=commands, isProbe=isProbe)
     if isinstance(parsedCommands, lit.Test.Result):
         return parsedCommands
 
@@ -66,7 +69,31 @@ def _validateModuleDependencies(modules):
             )
 
 
-def parseScript(test, preamble):
+def _partitionModuleCache(test, script, substitutions, canShare):
+    # Feature probes keep the suite cache. Give custom scripts a private cache:
+    # their commands can modify headers, change directory or set environment variables.
+    root = os.path.join(test.config.test_exec_root, "ModuleCache")
+    flag = "-fmodules-cache-path=" + root
+    temp = config._getSubstitution("%t", substitutions)
+    source = test.getSourcePath()
+    for i, command in enumerate(script):
+        if flag not in command:
+            continue
+        cache = temp + ".ModuleCache"
+        if canShare:
+            args = shlex.split(command)
+            if flag in args and source in args:
+                # Preserve argument order, including macro definitions. Only input
+                # and output names may differ between two built-in compile commands.
+                args[args.index(source)] = "<input>" + os.path.splitext(source)[1]
+                if args[-2:] in (["-o", temp + ".o"], ["-o", temp + ".exe"]):
+                    args[-1] = "<output>" + os.path.splitext(args[-1])[1]
+                key = hashlib.sha256(repr(args).encode()).hexdigest()
+                cache = os.path.join(root, key)
+        script[i] = command.replace(flag, "-fmodules-cache-path=" + cache)
+
+
+def parseScript(test, preamble, *, isProbe=False):
     """
     Extract the script from a test, with substitutions applied.
 
@@ -213,6 +240,24 @@ def parseScript(test, preamble):
         recursion_limit=test.config.recursiveExpansionLimit,
     )
 
+    if (
+        not isProbe
+        and "partition-module-cache" in test.config.available_features
+        and "clang-modules-build" in test.config.available_features
+    ):
+        canShare = (
+            preamble
+            and not scriptInTest
+            and not modules
+            and not fileDependencies
+            and test.config.environment == test.suite.config.environment
+            and test.config.substitutions == test.suite.config.substitutions
+            and all(
+                re.fullmatch(r"-[DU][A-Za-z_]\w*(?:=[A-Za-z0-9_]+)?", flag)
+                for flag in additionalCompileFlags
+            )
+        )
+        _partitionModuleCache(test, script, substitutions, canShare)
     return script
 
 
